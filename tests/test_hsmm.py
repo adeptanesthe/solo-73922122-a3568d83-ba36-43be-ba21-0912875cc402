@@ -73,6 +73,21 @@ class TestModelMechanics(unittest.TestCase):
                     need = 5 if s2 == 1 else 7
                     self.assertGreaterEqual(c2, need, "设备2提前翻转")
 
+    def test_asymmetric_min_duration_high_predegree_regression(self):
+        # 回归：旧实现把前驱定长表硬编码为 8 列并断言 max_pred <= 8，
+        # 非对称最短时长（如 min_on=1/min_off=3）下前驱度可达 12，直接 500。
+        dev1 = DeviceParams(12.0, 1.8, 1, 3)
+        dev2 = DeviceParams(24.0, 1.8, 4, 1)
+        m = _build_model(dev1, dev2, 0.1)
+        self.assertGreater(m.pred_idx_fixed.shape[1], 8)
+        # 端到端推断必须正常返回且概率合法
+        power = [1.0, 20.0, 21.0, 7.0, 30.0, 29.0, 0.5, 1.5] * 5
+        out = infer_posterior(power, 0.7, dev1, dev2, switch_probability=0.25)
+        for posterior in out["posterior_on"]:
+            for p in posterior:
+                self.assertTrue(0.0 <= p <= 1.0)
+        self.assertTrue(math.isfinite(out["log_likelihood"]))
+
     def test_min_duration_shapes_posterior(self):
         # 端到端：清晰信号下输出的高置信内部开/停段不短于最短时长。
         dev1 = DeviceParams(10.0, 0.0, 8, 8)
